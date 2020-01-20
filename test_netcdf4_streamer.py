@@ -53,7 +53,7 @@ class TestNetCDF4StreamerSingleValue(TestNetCDF4Streamer):
 
 class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
     def test_values_set(self):
-        """Write the whole blob of values to the varaible."""
+        """Write the whole blob of values to the variable."""
         stream = np.ones((500, 20, 600))
         for i in range(1, 20 + 1):
             stream[:, i - 1, :] *= i
