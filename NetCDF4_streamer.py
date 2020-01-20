@@ -3,6 +3,15 @@ import numpy as np
 
 
 class NetCDF4StreamerVariable(object):
+    """Encapsulate the variable for streaming.
+
+    Attributes:
+        variable (netCDF4.Variable): The 'real' netCDF4.Variable that is used
+            for streaming of the data.
+
+    Warning:
+        Once the job is finished the method 'flush' has to be called.
+    """
     def __init__(self, *,
                  var: netCDF4.Variable,
                  lengths: tuple,
@@ -28,6 +37,14 @@ class NetCDF4StreamerVariable(object):
     def streamNumpyData(self,
                         data: np.ndarray,
                         singe_entity: bool = True) -> None:
+        """Stream the data to the NetCDF4 variable.
+
+        Args:
+            data (np.ndarray): The line or the blob of the data to be streamed
+                to the variable.
+            singe_entity (bool): If True data are streamed as a single line,
+                if False the whole blob is streamed.
+        """
         if len(data.shape) != (len(self.lengths) - int(singe_entity)):
             raise ValueError("Number of dimensions does not match!")
 
@@ -47,10 +64,20 @@ class NetCDF4StreamerVariable(object):
             self._write_chunk(data, data.shape[self.pos])
 
     def flush(self):
+        """Store the results. Has to be called at the end.
+        """
         self._write_chunk(self._chunk, self.p_chunk)
         self.p_chunk = 0
 
     def _write_chunk(self, chunk: np.ndarray, p_chunk):
+        """Auxiliary method for streaming of the data to the variable.
+
+        Makes streaming of the data blob easier.
+
+        Args:
+            chunk (np.ndarray): The chunk to be streamed.
+            p_chunk (int): The pointer to the top of the chunk.
+        """
         if p_chunk < 1:
             return
         file_index = [slice(0, dim_size) for dim_size in self.lengths]
@@ -70,6 +97,17 @@ class NetCDF4StreamerVariable(object):
 
 
 class NetCDF4Streamer(netCDF4.Dataset):
+    """Extension of the native NetCDF4 driver. Allows to create the variable
+        for streaming of data in some reasonable chunk size.
+
+    Usage:
+        To create the file write:
+            >>> fh = NetCDF4Streamer("PATH_TO_NC.nc", "w")
+        To create a dimension write:
+            >>> fh.createDimension("d1", 500)
+        To create a 'streamed' variable write:
+            >>> fh.createStreamerVariable("var", "f8", ("d1", )), chunk_dimension="d1", chunk_size_mb=3)
+    """
     def createStreamerVariable(self,
                                varname,
                                datatype,
@@ -101,10 +139,12 @@ class NetCDF4Streamer(netCDF4.Dataset):
                                        least_significant_digit,
                                        fill_value)
 
+        # Create an array with sizes of each dimension in variable:
         dim_lengths = []
         for dim in dimensions:
             dim_lengths.append(self.dimensions[dim].size)
 
+        # Return the variable streamer object:
         return NetCDF4StreamerVariable(var=variable,
                                        lengths=tuple(dim_lengths),
                                        dimension=chunk_dimension,

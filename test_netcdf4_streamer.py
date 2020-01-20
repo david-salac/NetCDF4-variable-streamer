@@ -8,7 +8,9 @@ from NetCDF4_streamer import NetCDF4Streamer, NetCDF4StreamerVariable
 
 
 class TestNetCDF4Streamer(unittest.TestCase):
+    """Base class that create some simple file."""
     def setUp(self) -> None:
+        """Create the file and streamed variable."""
         # Create file:
         self.output_dir = tempfile.mkdtemp()
         self.file = NetCDF4Streamer(os.path.join(self.output_dir, "test.nc"),
@@ -25,11 +27,13 @@ class TestNetCDF4Streamer(unittest.TestCase):
                                              chunk_size_mb=3)
 
     def tearDown(self) -> None:
+        """Delete created variable."""
         os.remove(os.path.join(self.output_dir, "test.nc"))
 
 
 class TestNetCDF4StreamerSingleValue(TestNetCDF4Streamer):
     def test_single_value(self):
+        """Write the single value(s) to the variable in a stream."""
         for i in range(1, 20 + 1):
             data_set = np.ones((500, 600)) * i
             self.variable.streamNumpyData(data_set, singe_entity=True)
@@ -49,6 +53,7 @@ class TestNetCDF4StreamerSingleValue(TestNetCDF4Streamer):
 
 class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
     def test_values_set(self):
+        """Write the whole blob of values to the varaible."""
         stream = np.ones((500, 20, 600))
         for i in range(1, 20 + 1):
             stream[:, i - 1, :] *= i
@@ -69,6 +74,7 @@ class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
 
 class TestNetCDF4StreamerValuesSetAndSingle(TestNetCDF4Streamer):
     def test_values_set_and_single_value(self):
+        """Write both blob and single value to the variable."""
         stream = np.ones((500, 20, 600))
         self.variable.streamNumpyData(stream[:, 0, :].reshape(500, 600),
                                       singe_entity=True)
