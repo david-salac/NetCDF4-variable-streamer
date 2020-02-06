@@ -36,7 +36,7 @@ class TestNetCDF4StreamerSingleValue(TestNetCDF4Streamer):
         """Write the single value(s) to the variable in a stream."""
         for i in range(1, 20 + 1):
             data_set = np.ones((500, 600)) * i
-            self.variable.streamNumpyData(data_set, singe_entity=True)
+            self.variable.streamNumpyData(data_set, single_entity=True)
         self.variable.flush()
         self.file.close()
 
@@ -57,7 +57,7 @@ class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
         stream = np.ones((500, 20, 600))
         for i in range(1, 20 + 1):
             stream[:, i - 1, :] *= i
-        self.variable.streamNumpyData(stream, singe_entity=False)
+        self.variable.streamNumpyData(stream, single_entity=False)
         self.variable.flush()
         self.file.close()
 
@@ -77,12 +77,12 @@ class TestNetCDF4StreamerValuesSetAndSingle(TestNetCDF4Streamer):
         """Write both blob and single value to the variable."""
         stream = np.ones((500, 20, 600))
         self.variable.streamNumpyData(stream[:, 0, :].reshape(500, 600),
-                                      singe_entity=True)
+                                      single_entity=True)
 
         for i in range(2, 20 + 1):
             stream[:, i - 1, :] *= i
         self.variable.streamNumpyData(stream[:, 1:, :],
-                                      singe_entity=False)
+                                      single_entity=False)
         self.variable.flush()
         self.file.close()
 
@@ -141,7 +141,7 @@ class TestNetCDF4StreamerYieldingSingleValue(TestNetCDF4StreamerYielding):
         """Test the reading by the single value"""
         # Read by dimension 'd2'
         idx = 0
-        for line in self.var.yieldNumpyData(singe_entity=True):
+        for line in self.var.yieldNumpyData(single_entity=True):
             self.assertTrue(np.allclose(self.values[:, idx, :], line))
             idx += 1
 
@@ -154,7 +154,7 @@ class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
         idx_start = 0
         idx_end = 0
         idx = 0
-        for set_values in self.var.yieldNumpyData(singe_entity=False):
+        for set_values in self.var.yieldNumpyData(single_entity=False):
             idx_start = idx_end
             if idx == self.values.shape[1] - 1:
                 idx_end += self.values.shape[1] % chunk_size

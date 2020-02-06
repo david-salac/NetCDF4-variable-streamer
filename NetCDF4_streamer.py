@@ -52,22 +52,22 @@ class NetCDF4StreamerVariable(object):
 
     def streamNumpyData(self,
                         data: np.ndarray,
-                        singe_entity: bool = True) -> None:
+                        single_entity: bool = True) -> None:
         """Stream the data to the NetCDF4 variable.
 
         Args:
             data (np.ndarray): The line or the blob of the data to be streamed
                 to the variable.
-            singe_entity (bool): If True data are streamed as a single line,
+            single_entity (bool): If True data are streamed as a single line,
                 if False the whole blob is streamed. Number of dimensions
                 is of -1 smaller for True value.
         """
         if not(self.write_mode):
             raise ValueError("Variable is in the read mode!")
-        if len(data.shape) != (len(self.lengths) - int(singe_entity)):
+        if len(data.shape) != (len(self.lengths) - int(single_entity)):
             raise ValueError("Number of dimensions does not match!")
 
-        if singe_entity:
+        if single_entity:
             # The index for the writing:
             pos = [slice(0, dim_size) for dim_size in self.lengths]
             pos[self.pos] = self.p_chunk
@@ -83,11 +83,11 @@ class NetCDF4StreamerVariable(object):
             self._write_chunk(data, data.shape[self.pos])
 
     def yieldNumpyData(self,
-                       singe_entity: bool = True) -> None:
+                       single_entity: bool = True) -> None:
         """Yields the data from the NetCDF4 variable.
 
         Args:
-            singe_entity (bool): If True data are yields as a single line,
+            single_entity (bool): If True data are yields as a single line,
                 if False the whole blob is yield. Number of dimensions
                 is of -1 smaller for True value.
         Yields:
@@ -97,7 +97,7 @@ class NetCDF4StreamerVariable(object):
             raise ValueError("Variable is in the write mode!")
         # The index for the reading:
         pos = [slice(0, dim_size) for dim_size in self.lengths]
-        if singe_entity:
+        if single_entity:
             # Stream one entity (dimension length is len(dim) - 1)
             for read_idx in range(self.lengths[self.pos]):
                 pos[self.pos] = read_idx

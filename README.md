@@ -54,12 +54,12 @@ variable = fh.createStreamerVariable("var", "f8", ("d1", "d2", "d3")),
 
 # A) Write the single value (single entity):
 data_set = np.random.random((500, 600))
-variable.streamNumpyData(data_set, singe_entity=True)
+variable.streamNumpyData(data_set, single_entity=True)
 variable.flush()  # MUST BE CALLED EXPLICITELY WHEN FINISHED
 
 # B) Writing the chunk of values:
 data_set = np.random.random((500, 19, 600))
-variable.streamNumpyData(data_set, singe_entity=False)
+variable.streamNumpyData(data_set, single_entity=False)
 variable.flush()  # MUST BE CALLED EXPLICITELY WHEN FINISHED
 
 # ...
@@ -97,21 +97,20 @@ for blob in variable.yieldNumpyData(False):
 
 ```
 
-
 ## Accessing the NetCDF4 variable inside streamed variable
 It can be helpful to access the `netCDF4.Variable` object inside the
 streamed variable (e. g. for defining of some attributes). To do so
 follow the logic (example define the attribute `description`):
 ```
 # ...
-variable = fh.createStreamerVariable("var", "f8", ("d1", "d2", "d3")),
-                                     chunk_dimension="d2",
-                                     chunk_size_mb=3)
+wrapped_variable = fh.createStreamerVariable("var", "f8", ("d1", "d2", "d3")),
+                                             chunk_dimension="d2",
+                                             chunk_size_mb=3)
 
 # ...
 # Access the netCDF4.Variable object:
-netCDF4_variable_object: netCDF4.Variable = variable.variable
-# Define the description attribute:
+netCDF4_variable_object: netCDF4.Variable = wraped_variable.variable
+# Define the description attribute (in writing/append mode only):
 netCDF4_variable_object.description = "Streamed variable!"
 # ...
 ```
