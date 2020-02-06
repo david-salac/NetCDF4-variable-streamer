@@ -50,6 +50,26 @@ class TestNetCDF4StreamerSingleValue(TestNetCDF4Streamer):
         self.assertTrue(np.allclose(computed, expected))
         nc.close()
 
+    def test_single_value_permutate(self):
+        """Test the permutation"""
+        self.variable.axes_order = ("d3", "d1", "d2")
+        for i in range(1, 20 + 1):
+            # The order is now swapped (transposed)
+            data_set = np.ones((600, 500)) * i
+            self.variable.streamNumpyData(data_set, single_entity=True)
+        self.variable.flush()
+        self.file.close()
+
+        # Test the file
+        nc = netCDF4.Dataset(os.path.join(self.output_dir, "test.nc"))
+        computed = nc['var'][:]
+        expected = np.ones((500, 20, 600))
+        for i in range(1, 20 + 1):
+            expected[:, i - 1, :] *= i
+
+        self.assertTrue(np.allclose(computed, expected))
+        nc.close()
+
 
 class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
     def test_values_set(self):
@@ -64,6 +84,30 @@ class TestNetCDF4StreamerValuesSet(TestNetCDF4Streamer):
         # Test the file
         nc = netCDF4.Dataset(os.path.join(self.output_dir, "test.nc"))
         computed = nc['var'][:]
+        expected = np.ones((500, 20, 600))
+        for i in range(1, 20 + 1):
+            expected[:, i - 1, :] *= i
+
+        self.assertTrue(np.allclose(computed, expected))
+        nc.close()
+
+    def test_values_set_permutate(self):
+        """Write the whole blob of values to the variable."""
+        self.variable.axes_order = ("d3", "d1", "d2")
+
+        stream = np.ones((500, 20, 600))
+        for i in range(1, 20 + 1):
+            stream[:, i - 1, :] *= i
+        stream = np.moveaxis(stream, [0, 1, 2], [1, 2, 0])
+
+        self.variable.streamNumpyData(stream, single_entity=False)
+        self.variable.flush()
+        self.file.close()
+
+        # Test the file
+        nc = netCDF4.Dataset(os.path.join(self.output_dir, "test.nc"))
+        computed = np.array(nc['var'][:])
+
         expected = np.ones((500, 20, 600))
         for i in range(1, 20 + 1):
             expected[:, i - 1, :] *= i
@@ -93,6 +137,32 @@ class TestNetCDF4StreamerValuesSetAndSingle(TestNetCDF4Streamer):
         for i in range(1, 20 + 1):
             expected[:, i - 1, :] *= i
 
+        self.assertTrue(np.allclose(computed, expected))
+        nc.close()
+
+    def test_values_set_and_single_value_permutation(self):
+        self.variable.axes_order = ("d3", "d1", "d2")
+        stream = np.ones((500, 20, 600))
+
+        for i in range(2, 20 + 1):
+            stream[:, i - 1, :] *= i
+
+        self.variable.streamNumpyData(stream[:, 0, :].transpose(),
+                                      single_entity=True)
+
+        stream = np.moveaxis(stream, [0, 1, 2], [1, 2, 0])
+        self.variable.streamNumpyData(stream[:, :, 1:],
+                                      single_entity=False)
+        self.variable.flush()
+        self.file.close()
+
+        # Test the file
+        nc = netCDF4.Dataset(os.path.join(self.output_dir, "test.nc"))
+        computed = nc['var'][:]
+        expected = np.ones((500, 20, 600))
+
+        for i in range(1, 20 + 1):
+            expected[:, i - 1, :] *= i
         self.assertTrue(np.allclose(computed, expected))
         nc.close()
 
@@ -145,6 +215,15 @@ class TestNetCDF4StreamerYieldingSingleValue(TestNetCDF4StreamerYielding):
             self.assertTrue(np.allclose(self.values[:, idx, :], line))
             idx += 1
 
+    def test_single_value_permutation(self):
+        # Read by dimension 'd2'
+        idx = 0
+        self.var.axes_order = ("d3", "d1", "d2")
+        for line in self.var.yieldNumpyData(single_entity=True):
+            self.assertTrue(np.allclose(self.values[:, idx, :].transpose(),
+                                        line))
+            idx += 1
+
 
 class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
     def test_values_set(self):
@@ -163,5 +242,26 @@ class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
             self.assertTrue(
                 np.allclose(
                     self.values[:, idx_start:idx_end, :], set_values
+                )
+            )
+
+    def test_values_set_permutation(self):
+        # Read by dimension 'd2'
+        self.var.axes_order = ("d3", "d1", "d2")
+        chunk_size = self.var.chunk_size
+        idx_start = 0
+        idx_end = 0
+        idx = 0
+        for set_values in self.var.yieldNumpyData(single_entity=False):
+            idx_start = idx_end
+            if idx == self.values.shape[1] - 1:
+                idx_end += self.values.shape[1] % chunk_size
+            else:
+                idx_end += chunk_size
+            self.assertTrue(
+                np.allclose(
+                    np.moveaxis(self.values[:, idx_start:idx_end, :],
+                                [0, 1, 2], [1, 2, 0]),
+                    set_values
                 )
             )

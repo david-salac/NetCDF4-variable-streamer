@@ -18,6 +18,13 @@ class NetCDF4StreamerVariable(object):
         p_variable (int): The position in the variable to write.
         _chunk (np.ndarray): Numpy in-memory chunk.
 
+        _permutation (tuple): The permutation definition if different input
+            or output axes order is required. It is a tuple of 4 values, first
+            value is the default dimension position in blob version, second
+            is the permutation (target), third is the default dimension
+            position in the one-entity version, fourth is the permutation
+            (target for the single entity).
+
     Warning:
         Once the writing job is finished the method 'flush' has to be called.
     """
@@ -44,6 +51,8 @@ class NetCDF4StreamerVariable(object):
         if self.chunk_size < 1:
             raise ValueError("The chunk size is not sufficient")
 
+        self._permutation: tuple = None
+
         if write_mode:
             # Create the in-memory chunk
             chunk_shape = list(lengths)
@@ -62,10 +71,12 @@ class NetCDF4StreamerVariable(object):
                 if False the whole blob is streamed. Number of dimensions
                 is of -1 smaller for True value.
         """
-        if not(self.write_mode):
+        if not self.write_mode:
             raise ValueError("Variable is in the read mode!")
         if len(data.shape) != (len(self.lengths) - int(single_entity)):
             raise ValueError("Number of dimensions does not match!")
+
+        data = self._permutate(data, single_entity)
 
         if single_entity:
             # The index for the writing:
@@ -102,7 +113,9 @@ class NetCDF4StreamerVariable(object):
             for read_idx in range(self.lengths[self.pos]):
                 pos[self.pos] = read_idx
                 # Yield the single value
-                yield self.variable[tuple(pos)]
+                yield self._permutate(self.variable[tuple(pos)],
+                                      single_entity,
+                                      True)
         else:
             # Stream the whole chunk:
             # Starting and ending index for reading
@@ -127,7 +140,9 @@ class NetCDF4StreamerVariable(object):
                 # Determine the index for chunking:
                 pos[self.pos] = slice(chunk_idx_start, chunk_idx_end)
                 # Yield the chunk of values
-                yield self.variable[tuple(pos)]
+                yield self._permutate(self.variable[tuple(pos)],
+                                      single_entity,
+                                      True)
 
     def flush(self):
         """Store the results. Has to be called at the end.
@@ -158,6 +173,78 @@ class NetCDF4StreamerVariable(object):
         self.variable[tuple(file_index)] = chunk[tuple(chunk_index)]
 
         self.p_variable += p_chunk
+
+    def get_axes_order(self):
+        """Get the permutation prescription for the blob (target).
+        """
+        if self._permutation is None:
+            return self.variable.dimensions
+        else:
+            return tuple([self.variable.dimensions[per]
+                          for per in self._permutation[1]])
+
+    def set_axes_order(self, new_order: tuple):
+        """Set the permutation (accepts values for the blob permutation
+            and recompute for the single entity)
+
+        Args:
+            new_order (tuple): The n values (= number of dimension) defining
+                desired dimension order (target).
+        """
+        if new_order is None:
+            self._permutation = None
+        # Permutation for the whole array (for the blob output/input)
+        src_ord = list([i for i in range(0, len(self.variable.dimensions))])
+        per_all = tuple([new_order.index(source)
+                         for source in self.variable.dimensions])
+        skip_dim_name = self.variable.dimensions[self.pos]
+        dims_single_entity = tuple([dim for dim in self.variable.dimensions
+                                    if dim != skip_dim_name])
+        line_source = list([i for i
+                            in range(0, len(self.variable.dimensions) - 1)])
+        per_line = tuple([new_order.index(source)
+                          for source in dims_single_entity
+                          if source != skip_dim_name])
+        self._permutation = (src_ord, per_all, line_source, per_line)
+
+    axes_order = property(get_axes_order, set_axes_order)
+
+    def _permutate(self,
+                   data_set: np.ndarray,
+                   single_entity: bool,
+                   read: bool = False) -> np.ndarray:
+        """Permutate the dimension order of the input or output as
+            required by user
+
+        Args:
+            data_set (np.ndarray): Numpy array with original dimension order.
+            single_entity (bool): If the single entity is being permutate
+            read(bool): Reading inverts in the opposite direction.
+
+        Returns:
+            np.ndarray: New array with required order of dimensions.
+        """
+        if self._permutation is None:
+            return data_set
+
+        if single_entity:
+            if read:
+                return np.moveaxis(data_set,
+                                   self._permutation[2],
+                                   self._permutation[3])
+
+            return np.moveaxis(data_set,
+                               self._permutation[3],
+                               self._permutation[2])
+
+        if read:
+            return np.moveaxis(data_set,
+                               self._permutation[0],
+                               self._permutation[1])
+
+        return np.moveaxis(data_set,
+                           self._permutation[1],
+                           self._permutation[0])
 
     def __del__(self):
         self.flush()

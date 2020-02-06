@@ -114,3 +114,21 @@ netCDF4_variable_object: netCDF4.Variable = wraped_variable.variable
 netCDF4_variable_object.description = "Streamed variable!"
 # ...
 ```
+
+## Reading / writing data in the not-matching dimension order
+If the dimension order of data set to be stream to the file or 
+the expected dimension order for file to be read from the file do not
+match to the actual order of dimension in the file, you can use the 
+`axes_order` property to treat this issue.
+
+For example:
+```
+variable.axes_order = ("d2", "d3", "d1")
+```
+After calling this command, you can stream to the variable using proposed
+dimension order or read in this order.
+
+If you want to reset to the default dimension order, just write:
+```
+variable.axes_order = None
+```
