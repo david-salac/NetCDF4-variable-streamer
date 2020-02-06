@@ -95,3 +95,73 @@ class TestNetCDF4StreamerValuesSetAndSingle(TestNetCDF4Streamer):
 
         self.assertTrue(np.allclose(computed, expected))
         nc.close()
+
+
+class TestNetCDF4StreamerYielding(unittest.TestCase):
+    def setUp(self) -> None:
+        """Set-up the NetCDF4 variable for reading"""
+        # Create a file:
+        self.output_dir = tempfile.mkdtemp()
+        file_pointer = netCDF4.Dataset(
+            os.path.join(self.output_dir, "testRead.nc"),
+            "w"
+        )
+
+        # Create dimensions
+        file_pointer.createDimension("d1", 50)
+        file_pointer.createDimension("d2", 60)
+        file_pointer.createDimension("d3", 70)
+
+        # Create variable
+        var = file_pointer.createVariable("test", "f8", ("d1", "d2", "d3"),
+                                          fill_value=0)
+        # Fill variable with values
+        self.values = np.random.random((50, 60, 70))
+        var[:, :, :] = self.values
+
+        # Save and close
+        file_pointer.close()
+
+        # Open a testing file for reading
+        self.nc = NetCDF4Streamer(
+            os.path.join(self.output_dir, "testRead.nc"),
+            "r"
+        )
+        self.var = self.nc.openStreamerVariable("test",
+                                                chunk_dimension="d2",
+                                                chunk_size_mb=1)
+
+    def tearDown(self) -> None:
+        """Delete created variable."""
+        os.remove(os.path.join(self.output_dir, "testRead.nc"))
+
+
+class TestNetCDF4StreamerYieldingSingleValue(TestNetCDF4StreamerYielding):
+    def test_single_value(self):
+        """Test the reading by the single value"""
+        # Read by dimension 'd2'
+        idx = 0
+        for line in self.var.yieldNumpyData(singe_entity=True):
+            self.assertTrue(np.allclose(self.values[:, idx, :], line))
+            idx += 1
+
+
+class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
+    def test_values_set(self):
+        """Test of the reading by the blob."""
+        # Read by dimension 'd2'
+        chunk_size = self.var.chunk_size
+        idx_start = 0
+        idx_end = 0
+        idx = 0
+        for set_values in self.var.yieldNumpyData(singe_entity=False):
+            idx_start = idx_end
+            if idx == self.values.shape[1] - 1:
+                idx_end += self.values.shape[1] % chunk_size
+            else:
+                idx_end += chunk_size
+            self.assertTrue(
+                np.allclose(
+                    self.values[:, idx_start:idx_end, :], set_values
+                )
+            )

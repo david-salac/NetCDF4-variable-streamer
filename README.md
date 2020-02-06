@@ -1,6 +1,6 @@
-# Simple chunk streamer to the NetCDF4 variable
-A simple extension of default NetCDF4 driver for streaming to the variable in
-some reasonable size chunks. 
+# Simple chunk streamer to (and from) the NetCDF4 variable
+A simple extension of default NetCDF4 driver for streaming to the variable and
+reading from the variable in some reasonable size chunks.
 
 ## Purpose of the streamer
 The typical task that occurs during data processing is to swap computed data
@@ -11,13 +11,18 @@ Another way is to stream directly to the NetCDF4 file. Unfortunately, default
 NetCDF4 driver available in Python does not support any simple way to do so 
 (and neither does GDAL or xarray).
 
+The same rationale is valid also for the reading of the data from the large 
+NetCDF4 file where the size of the variable can exceed the size of the 
+available memory.
+
 The presented utility offers the simplest way how to treat this issue. It 
 allows the developer directly stream to the desired variable inside the NetCDF4 
-file (by selected dimension). The main class simply extends (inherits) from the 
-`netCDF4.Dataset` class and add the possibility to create a variable for 
-streaming using method `createStreamerVariable`.    
+file (by selected dimension). It also allows to read (yield) from the
+NetCDF4 variable the chunks of data. The main class simply extends (inherits) 
+from the `netCDF4.Dataset` class and add the possibility to create a variable 
+for streaming using method `createStreamerVariable`.    
 
-## How to use the script?
+## How to use the script for writing?
 Suppose that user wants to create a variable called 'var' with dimensions
 called (d1, d2, d3) with sizes (500, 20, 600) and swapped (stream) to the
 variable using the dimension 'd2' as a pivotal one. 
@@ -63,7 +68,37 @@ variable.flush()  # MUST BE CALLED EXPLICITELY WHEN FINISHED
 fh.close()
 ```
 
-### Accessing the NetCDF4 variable inside streamed variable
+## How to use the script for reading in chunks?
+The purpose of this part is to read from the NetCDF4 variable in some chunks 
+of the defined size. Logic is the opposite of the streaming logic described 
+above.
+
+Suppose that we have a variable described above and we want to read chunks by 
+slicing the dimension d2:
+```
+from NetCDF4_streamer import NetCDF4Streamer
+
+fh = NetCDF4Streamer("PATH_TO_NC.nc", "r")
+
+variable = fh.openStreamerVariable("var", 
+                                   chunk_dimension="d2",
+                                   chunk_size_mb=3)
+
+# ...
+# For reading the file "line by line"
+for line in variable.yieldNumpyData(True):
+    # Work with the line
+
+# ...
+# For reading the file by blobs (chunks)
+for blob in variable.yieldNumpyData(False):
+    # Work with the blob
+# ...
+
+```
+
+
+## Accessing the NetCDF4 variable inside streamed variable
 It can be helpful to access the `netCDF4.Variable` object inside the
 streamed variable (e. g. for defining of some attributes). To do so
 follow the logic (example define the attribute `description`):
@@ -72,6 +107,7 @@ follow the logic (example define the attribute `description`):
 variable = fh.createStreamerVariable("var", "f8", ("d1", "d2", "d3")),
                                      chunk_dimension="d2",
                                      chunk_size_mb=3)
+
 # ...
 # Access the netCDF4.Variable object:
 netCDF4_variable_object: netCDF4.Variable = variable.variable
