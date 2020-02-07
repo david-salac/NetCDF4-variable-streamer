@@ -259,10 +259,15 @@ class NetCDF4Streamer(netCDF4.Dataset):
             >>> fh = NetCDF4Streamer("PATH_TO_NC.nc", "w")
         To create a dimension write:
             >>> fh.createDimension("d1", 500)
-        To create a 'streamed' variable for writing (using in-memory chunk of size 3 MB):
-            >>> fh.createStreamerVariable("var", "f8", ("d1", )), chunk_dimension="d1", chunk_size_mb=3)
-        To open a 'streamed' ('yield') variable for reading (using in-memory chunk of size 3 MB):
-            >>> fh.openStreamerVariable("var",  chunk_dimension="d1", chunk_size_mb=3)
+        To create a 'streamed' variable for writing (using in-memory chunk of
+            size 3 MB):
+            >>> fh.createStreamerVariable("var", "f8", ("d1", )),
+            >>>                           chunk_dimension="d1",
+            >>>                           chunk_size_mb=3)
+        To open a 'streamed' ('yield') variable for reading (using in-memory
+            chunk of size 3 MB):
+            >>> fh.openStreamerVariable("var",  chunk_dimension="d1",
+            >>>                         chunk_size_mb=3)
     """
 
     def createStreamerVariable(self,

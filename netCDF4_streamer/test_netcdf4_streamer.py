@@ -4,7 +4,8 @@ import os
 import numpy as np
 import netCDF4
 
-from NetCDF4_streamer import NetCDF4Streamer, NetCDF4StreamerVariable
+from netCDF4_streamer.netCDF4_streamer import NetCDF4Streamer, \
+    NetCDF4StreamerVariable
 
 
 class TestNetCDF4Streamer(unittest.TestCase):
