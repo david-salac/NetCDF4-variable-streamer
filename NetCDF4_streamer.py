@@ -202,8 +202,8 @@ class NetCDF4StreamerVariable(object):
                                     if dim != skip_dim_name])
         line_source = list([i for i
                             in range(0, len(self.variable.dimensions) - 1)])
-        per_line = tuple([new_order.index(source)
-                          for source in dims_single_entity
+        per_line = tuple([dims_single_entity.index(source)
+                          for source in new_order
                           if source != skip_dim_name])
         self._permutation = (src_ord, per_all, line_source, per_line)
 
