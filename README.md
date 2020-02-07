@@ -132,3 +132,9 @@ If you want to reset to the default dimension order, just write:
 ```
 variable.axes_order = None
 ```
+
+# Install as a package
+If you want to install application as a Python package using PIP, use:
+```
+python setup.py install
+```
