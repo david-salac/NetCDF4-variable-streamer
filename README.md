@@ -33,7 +33,7 @@ whole blob of data.
 
 Once the job is finished, variable has to be closed using the `flush` method.
 ```
-from NetCDF4_streamer import NetCDF4Streamer
+from netCDF4_streamer import NetCDF4Streamer
 
 # Create a file handler:
 fh = NetCDF4Streamer("PATH_TO_NC.nc", "w")
@@ -76,7 +76,7 @@ above.
 Suppose that we have a variable described above and we want to read chunks by 
 slicing the dimension d2:
 ```
-from NetCDF4_streamer import NetCDF4Streamer
+from netCDF4_streamer import NetCDF4Streamer
 
 fh = NetCDF4Streamer("PATH_TO_NC.nc", "r")
 
