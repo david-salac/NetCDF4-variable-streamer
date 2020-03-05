@@ -4,8 +4,7 @@ import os
 import numpy as np
 import netCDF4
 
-from netCDF4_streamer.netCDF4_streamer import NetCDF4Streamer, \
-    NetCDF4StreamerVariable
+from netCDF4_streamer import NetCDF4Streamer, NetCDF4StreamerVariable
 
 
 class TestNetCDF4Streamer(unittest.TestCase):
@@ -266,3 +265,7 @@ class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
                     set_values
                 )
             )
+
+
+if __name__ == "__main__":
+    unittest.main()

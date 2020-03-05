@@ -11,7 +11,10 @@ class NetCDF4StreamerVariable(object):
         variable (netCDF4.Variable): The 'real' netCDF4.Variable that is used
             for streaming of the data.
         lengths (tuple): The tuple of integers containing the dimension sizes.
-        pos (int): The position (index) of the dimension for streaming.
+        pos (int): The position of the dimension for streaming (relative
+            to other indices). For example we have 4 dimensions and we do
+            stream by the fourth (then pos = 3 since we index from zero).
+            The value of the pos is in range from 0 to len(lengths).
         chunk_size (int): Actual size of the chunk in number of items.
 
         p_chunk (int): The position in the in-memory writing chunk.
@@ -41,13 +44,18 @@ class NetCDF4StreamerVariable(object):
         # Define the dimensions sizes
         self.lengths: tuple = lengths
 
+        # Find the index position of the chunked dimension
         self.pos: int = [dim.name for dim in var.get_dims()].index(dimension)
+        # The pointer to the top or the in-memory chunk
         self.p_chunk: int = 0
+        # The pointer to the top of the NetCDF4 file variable
         self.p_variable: int = 0
 
-        # The chunks size in the number of items
+        # The chunks (in-memory chunk) size in the number of items
+        # Chunk size is computed by the production of the dimension lengths
+        #   and the size of double type (which is 8 bytes)
         self.chunk_size = chunk_size_mb * 1_000_000
-        self.chunk_size //= (8 * np.prod(lengths) // lengths[self.pos])
+        self.chunk_size //= ((8 * np.prod(lengths)) // lengths[self.pos])
         if self.chunk_size < 1:
             raise ValueError("The chunk size is not sufficient")
 
@@ -67,9 +75,9 @@ class NetCDF4StreamerVariable(object):
         Args:
             data (np.ndarray): The line or the blob of the data to be streamed
                 to the variable.
-            single_entity (bool): If True data are streamed as a single line,
-                if False the whole blob is streamed. Number of dimensions
-                is of -1 smaller for True value.
+            single_entity (bool): If True data are streamed as a single "line"
+                (one entity), if False the whole blob is streamed. Number of
+                dimensions is of -1 smaller for True value.
         """
         if not self.write_mode:
             raise ValueError("Variable is in the read mode!")
@@ -79,10 +87,10 @@ class NetCDF4StreamerVariable(object):
         data = self._permutate(data, single_entity)
 
         if single_entity:
-            # The index for the writing:
-            pos = [slice(0, dim_size) for dim_size in self.lengths]
-            pos[self.pos] = self.p_chunk
-            self._chunk[tuple(pos)] = data
+            # The (tuple) of indices for the writing:
+            work_idx = [slice(0, dim_size) for dim_size in self.lengths]
+            work_idx[self.pos] = self.p_chunk
+            self._chunk[tuple(work_idx)] = data
             self.p_chunk += 1
             # If the chunk exceeds the limit:
             if self.p_chunk == self.chunk_size:
@@ -106,14 +114,14 @@ class NetCDF4StreamerVariable(object):
         """
         if self.write_mode:
             raise ValueError("Variable is in the write mode!")
-        # The index for the reading:
-        pos = [slice(0, dim_size) for dim_size in self.lengths]
+        # The index for the reading (tuple of indices):
+        work_idx = [slice(0, dim_size) for dim_size in self.lengths]
         if single_entity:
             # Stream one entity (dimension length is len(dim) - 1)
             for read_idx in range(self.lengths[self.pos]):
-                pos[self.pos] = read_idx
+                work_idx[self.pos] = read_idx
                 # Yield the single value
-                yield self._permutate(self.variable[tuple(pos)],
+                yield self._permutate(self.variable[tuple(work_idx)],
                                       single_entity,
                                       True)
         else:
@@ -138,9 +146,9 @@ class NetCDF4StreamerVariable(object):
                     chunk_idx_end += self.chunk_size
 
                 # Determine the index for chunking:
-                pos[self.pos] = slice(chunk_idx_start, chunk_idx_end)
+                work_idx[self.pos] = slice(chunk_idx_start, chunk_idx_end)
                 # Yield the chunk of values
-                yield self._permutate(self.variable[tuple(pos)],
+                yield self._permutate(self.variable[tuple(work_idx)],
                                       single_entity,
                                       True)
 
