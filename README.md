@@ -1,4 +1,6 @@
 # Simple chunk streamer to (and from) the NetCDF4 variable
+Author: David Salac <http://www.github.com/david-salac>
+
 A simple extension of default NetCDF4 driver for streaming to the variable and
 reading from the variable in some reasonable size chunks.
 
