@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='netCDF4-enhancement',
-    version='0.1.1',
+    version='0.1.2',
     author='David Salac',
     author_email='info@davidsalac.eu',
     description='Extends the default NetCDF4 driver by providing helpful'

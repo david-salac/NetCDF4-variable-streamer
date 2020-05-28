@@ -282,23 +282,33 @@ class NetCDF4StreamerVariable(object):
         """
         return self.variable
 
-    def __getitem__(self, indices) -> Union[float, np.ndarray]:
-        """Get the item on the position defined by argument indices.
-            Reflects the order of axis in axes_order property.
+    def sel(self, *args, **kwargs) -> Union[np.ndarray, float]:
+        """Select the variable at given location.
 
-        Warning:
-            Uses np.transpose function if the dimension order is changed.
-            This can lead to a memory leaks for a massive arrays (use
-            streaming logic in this case).
+        Location can be defined either by the positional argument (following
+            the order defined by the 'axes_order' property, or by the
+            keyword logic with key equals to the dimension name and
+            value equals to the selected position.
 
         Args:
-            indices (tuple): the position of the item (or slice)
-
+            args: Define position by the positional arguments following
+                the dimension order defined by the 'axes_order' property.
+            kwargs: Defines position by the kwargs logic, key is the
+                name of dimension, value is the index on that dimension.
         Returns:
-            Union[float, np.ndarray]: value at position defined by indices.
+            Union[np.ndarray, float]: Either np.ndarray or single float value.
         """
+        if len(args) > 0 and len(kwargs) > 0:
+            raise ValueError("Only one selecting logic can be chosen. Either "
+                             "use position logic, or kwargs logic.")
         # What dimension order is required
         expected_dim_order = self.axes_order
+        # Define indices
+        indices = [i for i in self.axes_order]
+        for i, pos_idx in enumerate(args):
+            indices[i] = pos_idx
+        for key, value in kwargs.items():
+            indices[expected_dim_order.index(key)] = value
         # Current dimension order of the variable
         current_dim_order = self.variable.dimensions
         # Permutation prescription
@@ -335,7 +345,8 @@ class NetCDF4StreamerVariable(object):
                 raise AttributeError("Incorrect index type!")
 
         # Does the permutation
-        file_index = tuple(dimension_sizes[i] for i in permutation_formula_back)
+        file_index = tuple(
+            dimension_sizes[i] for i in permutation_formula_back)
         # Get the value
         values = np.array(self.variable[file_index])
         # Swap dimensions:
@@ -346,6 +357,23 @@ class NetCDF4StreamerVariable(object):
             values = float(values)
         # Return the value in expected logic
         return values
+
+    def __getitem__(self, indices) -> Union[float, np.ndarray]:
+        """Get the item on the position defined by argument indices.
+            Reflects the order of axis in axes_order property.
+
+        Warning:
+            Uses np.transpose function if the dimension order is changed.
+            This can lead to a memory leaks for a massive arrays (use
+            streaming logic in this case).
+
+        Args:
+            indices (tuple): the position of the item (or slice)
+
+        Returns:
+            Union[float, np.ndarray]: value at position defined by indices.
+        """
+        return self.sel(*indices)
 
     def __setitem__(self, indices, value: Union[float, np.ndarray]):
         """Set the item on the position defined by argument indices to the

@@ -364,6 +364,23 @@ class TestReadingWritingDimensionOrderFree(unittest.TestCase):
         self.assertAlmostEqual(self.var[1, 1, 2, 1], expected[1, 1, 2, 1])
         self.assertTrue(isinstance(self.var[1, 1, 2, 1], float))
 
+    def test_sel(self):
+        """Test the sel method using kwarg values."""
+        # A) Fill variable with values
+        axes_order = [self.dims[1], self.dims[3],
+                      self.dims[2], self.dims[0]]
+        expected = self.value.transpose((1, 3, 2, 0))
+        self.var.axes_order = axes_order
+
+        for d1 in range(self.shape[0]):
+            for d2 in range(self.shape[1]):
+                for d3 in range(self.shape[2]):
+                    for d4 in range(self.shape[3]):
+                        self.assertAlmostEqual(self.var.sel(
+                            d1=d1, d2=d2, d3=d3, d4=d4),
+                            expected[d2, d4, d3, d1]
+                        )
+
     def test_write(self):
         """Test the writing."""
         # A) Fill variable with single values

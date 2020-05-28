@@ -50,10 +50,10 @@ whole blob of data.
 
 Once the job is finished, variable must be closed using the `flush` method.
 ```
-from netCDF4_streamer import NetCDF4Streamer
+import netCDF4_enhancement as ne
 
 # Create a file handler:
-fh = NetCDF4Streamer("PATH_TO_NC.nc", "w")
+fh = ne.NetCDF4Streamer("PATH_TO_NC.nc", "w")
 # Define dimensions with names: ("d1", "d2", "d3"), sizes (500, 20, 600)
 fh.createDimension("d1", 500)
 fh.createDimension("d2", 20)
@@ -93,9 +93,9 @@ above.
 Suppose that we have a variable described above and we want to read chunks by 
 slicing the dimension d2:
 ```
-from netCDF4_streamer import NetCDF4Streamer
+import netCDF4_enhancement as ne
 
-fh = NetCDF4Streamer("PATH_TO_NC.nc", "r")
+fh = ne.NetCDF4Streamer("PATH_TO_NC.nc", "r")
 
 variable = fh.openStreamerVariable("var", 
                                    chunk_dimension="d2",
@@ -159,6 +159,12 @@ value_inside = variable[:, :, :, :]  # <- for reading
 # Slices and concrete indices:
 variable[:, :, 34, :] = new_value_to_be_written  # <- for writing
 value_inside = variable[:, :, 34, :]  # <- for reading
+
+# Alternative method for reading value is using .sel method:
+#   - First option expect arguments ordered by the value of 'axes_order'
+value_inside = variable.sel(1, 2, 3, 4)
+#   - Another approach is bit more universal, keys are names of dimensions
+value_inside = variable.sel(d1=1, d2=2, d3=3, d4=4)
 ```
 This overloaded operator for accessing the values does always return either
 `numpy.ndarray` object or the `float` value (never masked array).
@@ -229,6 +235,11 @@ normal `netCDF4` variable). Always return either `float` value or
 of dimensions defined by the `axes_order` property (similar logic to the
 normal `netCDF4` variable).
 * `netcdf4_variable`: Return the variable as a `netCDF4.Variable` object.
+* `sel`: Return the value at given position.
+Location can be defined either by the positional argument (following
+the order defined by the 'axes_order' property, or by the
+keyword logic with key equals to the dimension name and
+value equals to the selected position.
 
 ## Software User Manual (SUM), how to use it?
 ### Installation
