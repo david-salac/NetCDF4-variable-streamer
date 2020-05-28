@@ -1,10 +1,15 @@
-# Simple chunk streamer to (and from) the NetCDF4 variable
+# Enhancement of the netCDF4 Python driver
 Author: David Salac <http://www.github.com/david-salac>
 
-A simple extension of default NetCDF4 driver for streaming to the variable and
-reading from the variable in some reasonable size chunks.
+Extends the default NetCDF4 driver (package netCDF4) by providing helpful
+functionality like reading and writing to variable in some chunks
+(previously pre-stored in memory - Dask like style of chunking)
+or dealing with variables regardless of its dimension order.
+Principally directly extends netCDF4 Dataset class with new functionality.
+Covers most of the functionality that is often the only reason why developers
+choose to use stogy libraries like xarray or Dask.
 
-## Purpose of the streamer
+## Purpose of the streamer (use cases)
 The typical task that occurs during data processing is to swap computed data
 to the disk (due to shortage of memory). This can be done by using Dask
 and similar tools that are notoriously known for the inefficiency (the 
@@ -22,18 +27,28 @@ allows the developer directly stream to the desired variable inside the NetCDF4
 file (by selected dimension). It also allows to read (yield) from the
 NetCDF4 variable the chunks of data. The main class simply extends (inherits) 
 from the `netCDF4.Dataset` class and add the possibility to create a variable 
-for streaming using method `createStreamerVariable`.    
+for streaming using method `createStreamerVariable`.
 
-## How to use the script for writing?
-Suppose that user wants to create a variable called 'var' with dimensions
-called (d1, d2, d3) with sizes (500, 20, 600) and swapped (stream) to the
+Another quite typical situation occurs when a user does not exactly know
+the order of dimensions in the variable before you write into it (or
+read from it). Or similarly, when the application is in development
+and order can be changed at some point. This issue is efficiently
+solved in xarray library. But installing xarray involves many drawbacks
+like having a massive library in a system (that is not useful otherwise)
+or risking memory leaks (often related even to the correct usage of xarray).
+This library directly extends the native netCDF4 drive. Accordingly, it
+is minimalistic and solves exactly this typical problem.
+
+## How to use the script for streaming to the variable?
+Suppose that user wants to create a variable called `'var'` with dimensions
+called `(d1, d2, d3)` with sizes `(500, 20, 600)` and swapped (stream) to the
 variable using the dimension 'd2' as a pivotal one. 
 
 Following example shows the way how to deal with this issue. There are two
 options what to stream: stream line by line (entity by entity) or stream the 
 whole blob of data.
 
-Once the job is finished, variable has to be closed using the `flush` method.
+Once the job is finished, variable must be closed using the `flush` method.
 ```
 from netCDF4_streamer import NetCDF4Streamer
 
@@ -70,7 +85,7 @@ variable.flush()  # MUST BE CALLED EXPLICITELY WHEN FINISHED
 fh.close()
 ```
 
-## How to use the script for reading in chunks?
+## How to use the script for reading in chunks from the variable?
 The purpose of this part is to read from the NetCDF4 variable in some chunks 
 of the defined size. Logic is the opposite of the streaming logic described 
 above.
@@ -111,7 +126,7 @@ wrapped_variable = fh.createStreamerVariable("var", "f8", ("d1", "d2", "d3")),
 
 # ...
 # Access the netCDF4.Variable object:
-netCDF4_variable_object: netCDF4.Variable = wraped_variable.variable
+netCDF4_variable_object: netCDF4.Variable = wraped_variable.netcdf4_variable
 # Define the description attribute (in writing/append mode only):
 netCDF4_variable_object.description = "Streamed variable!"
 # ...
@@ -135,8 +150,101 @@ If you want to reset to the default dimension order, just write:
 variable.axes_order = None
 ```
 
-# Install as a package
-If you want to install application as a Python package using PIP, use:
+For reading/writing data afterwards, you can use standard approach:
 ```
+# Using slices
+variable[:, :, :, :] = new_value_to_be_written  # <- for writing
+value_inside = variable[:, :, :, :]  # <- for reading
+
+# Slices and concrete indices:
+variable[:, :, 34, :] = new_value_to_be_written  # <- for writing
+value_inside = variable[:, :, 34, :]  # <- for reading
+```
+This overloaded operator for accessing the values does always return either
+`numpy.ndarray` object or the `float` value (never masked array).
+
+## API documentation
+Documentation of the basic functionality.
+### NetCDF4Streamer class
+Class `NetCDF4Streamer` is the child of `netCDF4.Dataset` class. Accordingly
+inherits all the methods.
+
+There are following new methods:
+* `createStreamerVariable`: has the same interface as 
+`netCDF4.Dataset.createVariable`. 
+Creates new variable inside NetCDF4 file.
+Returns `NetCDF4StreamerVariable` object. 
+Method adds two new optional (keyword type) parameters:
+    - `chunk_dimension (Optional[str])`: define dimension by that data are
+    streamed to the variable, if `None` the first dimension is chosen. 
+    Default value is `None`. _It is pertinent only if you want to use
+    streaming to the variable._
+    - `chunk_size_mb (float)`: Size of the memory chunk to that data
+    are streamed first (before they are streamed to the variable
+    on the disk). Unit is megabyte. Default size is 512 MB.
+    _It is pertinent only if you want to use streaming to the variable._
+    
+* `openStreamerVariable`: has the same logic as 
+`netCDF4.Dataset['variable_name']'`. 
+Opens an existing variable inside NetCDF4 file.
+Returns `NetCDF4StreamerVariable` object. 
+Method adds two new optional (keyword type) parameters:
+    - `chunk_dimension (Optional[str])`: define dimension by that data are
+    streamed to the variable, if `None` the first dimension is chosen. 
+    Default value is `None`. _It is pertinent only if you want to use
+    streaming to the variable._
+    - `chunk_size_mb (float)`: Size of the memory chunk to that data
+    are streamed first (before they are streamed to the variable
+    on the disk). Unit is megabyte. Default size is 512 MB.
+    _It is pertinent only if you want to use streaming to the variable._
+
+### NetCDF4StreamerVariable class
+Represent the crucial class in the logic. 
+
+There are following methods and properties:
+* `streamNumpyData`: Method that stream the data to the NetCDF4 variable.
+With parameters:
+    - `data (np.ndarray)`: The line or the blob of the data to be streamed
+        to the variable.
+    - `single_entity (bool)`: If True data are streamed as a single "line"
+        (one entity), if False the whole blob is streamed. Number of
+        dimensions is of -1 smaller for True value.
+* `yieldNumpyData`: Method that yields the data from the NetCDF4 variable.
+With parameters:
+    - `single_entity (bool)`: If True data are streamed as a single "line"
+        (one entity), if False the whole blob is streamed. Number of
+        dimensions is of -1 smaller for True value.
+* `flush`: Important method that store temporal results of streaming into
+the physical variable.
+* `axes_order`: Property that gets or sets dimension order that is required.
+Default order can be re-seted using `obj.axes_order = None`. Returns/accepts
+the tuple of dimension names (string).
+* `dimensions`: Return the physical dimension order (tuple of dimension
+names as string values).
+* `__getitem__`: Operator for getting value in the position reflecting order
+of dimensions defined by the `axes_order` property (similar logic to the
+normal `netCDF4` variable). Always return either `float` value or
+`np.ndarray` value (never the mask array).
+* `__setitem__`: Operator for setting value in the position reflecting order
+of dimensions defined by the `axes_order` property (similar logic to the
+normal `netCDF4` variable).
+* `netcdf4_variable`: Return the variable as a `netCDF4.Variable` object.
+
+## Software User Manual (SUM), how to use it?
+### Installation
+To install the most actual package, use the command:
+```
+git clone https://github.com/david-salac/NetCDF4-variable-streamer
+cd NetCDF4-variable-streamer/
 python setup.py install
 ```
+or simply install using PIP:
+```
+pip install netCDF4-enhancement
+```
+#### Running of the unit-tests
+For running package unit-tests, use command:
+```
+python setup.py test
+```
+In order to run package unit-tests you need to clone package first.

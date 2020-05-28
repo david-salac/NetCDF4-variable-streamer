@@ -1,3 +1,5 @@
+from typing import Optional, Union, Tuple
+
 import netCDF4
 import numpy as np
 
@@ -185,11 +187,11 @@ class NetCDF4StreamerVariable(object):
     def get_axes_order(self):
         """Get the permutation prescription for the blob (target).
         """
-        if self._permutation is None:
-            return self.variable.dimensions
-        else:
-            return tuple([self.variable.dimensions[per]
-                          for per in self._permutation[1]])
+        temp = ["" for _ in self._permutation[1]]
+        # Permutate
+        for i, pr in enumerate(self._permutation[1]):
+            temp[pr] = self.variable.dimensions[i]
+        return tuple(temp)
 
     def set_axes_order(self, new_order: tuple):
         """Set the permutation (accepts values for the blob permutation
@@ -217,6 +219,9 @@ class NetCDF4StreamerVariable(object):
 
     axes_order = property(get_axes_order, set_axes_order)
 
+    # Property defining axes order
+    axes_order = property(get_axes_order, set_axes_order)
+
     def _permutate(self,
                    data_set: np.ndarray,
                    single_entity: bool,
@@ -226,7 +231,7 @@ class NetCDF4StreamerVariable(object):
 
         Args:
             data_set (np.ndarray): Numpy array with original dimension order.
-            single_entity (bool): If the single entity is being permutate
+            single_entity (bool): If the single entity is being permutated.
             read(bool): Reading inverts in the opposite direction.
 
         Returns:
@@ -257,10 +262,153 @@ class NetCDF4StreamerVariable(object):
     def __del__(self):
         self.flush()
 
+    @property
+    def dimensions(self) -> Tuple[str]:
+        """Returns the ordered list of dimensions in the physical order of the
+            variable.
+
+        Returns:
+            Tuple[str]: Tuple of variables (in the physical order of the
+                variable on the disk).
+        """
+        return tuple(self.variable.dimensions)
+
+    @property
+    def netcdf4_variable(self) -> netCDF4.Variable:
+        """Return the variable as netCDF4.Variable object.
+
+        Returns:
+            netCDF4.Variable: variable as netCDF4.Variable object.
+        """
+        return self.variable
+
+    def __getitem__(self, indices) -> Union[float, np.ndarray]:
+        """Get the item on the position defined by argument indices.
+            Reflects the order of axis in axes_order property.
+
+        Warning:
+            Uses np.transpose function if the dimension order is changed.
+            This can lead to a memory leaks for a massive arrays (use
+            streaming logic in this case).
+
+        Args:
+            indices (tuple): the position of the item (or slice)
+
+        Returns:
+            Union[float, np.ndarray]: value at position defined by indices.
+        """
+        # What dimension order is required
+        expected_dim_order = self.axes_order
+        # Current dimension order of the variable
+        current_dim_order = self.variable.dimensions
+        # Permutation prescription
+        permutation_formula = [current_dim_order.index(dim)
+                               for dim in expected_dim_order]
+        permutation_formula_back = [expected_dim_order.index(dim) for dim in
+                                    current_dim_order]
+
+        # Prepare the indices values
+        dimension_sizes = []
+        squeeze_axis = []
+        for i, idx in enumerate(indices):
+            if isinstance(idx, int):
+                dimension_sizes.append(slice(idx, idx + 1, 1))
+                squeeze_axis.append(i)
+            elif isinstance(idx, slice):
+                start = idx.start
+                end = idx.stop
+                step = idx.step
+                if start is None:
+                    start = 0
+                if start < 0:
+                    start += self.lengths[permutation_formula[i]]
+                if end is None:
+                    end = self.lengths[permutation_formula[i]]
+                if end < 0:
+                    end += self.lengths[permutation_formula[i]]
+                if step is None:
+                    step = 1
+                if step < 0:
+                    step += self.lengths[permutation_formula[i]]
+                dimension_sizes.append(slice(start, end, step))
+            else:
+                raise AttributeError("Incorrect index type!")
+
+        # Does the permutation
+        file_index = tuple(dimension_sizes[i] for i in permutation_formula_back)
+        # Get the value
+        values = np.array(self.variable[file_index])
+        # Swap dimensions:
+        values = values.transpose(tuple(permutation_formula))
+        # Squeeze dimensions:
+        values = values.squeeze(tuple(squeeze_axis))
+        if len(values.shape) == 0:
+            values = float(values)
+        # Return the value in expected logic
+        return values
+
+    def __setitem__(self, indices, value: Union[float, np.ndarray]):
+        """Set the item on the position defined by argument indices to the
+            value defined by the parameter 'value'. Reflects the order of axis
+            in axes_order property.
+
+        Args:
+            indices (tuple): the position of the item (or slice).
+            value (np.ndarray): new value to be set.
+        """
+        # What dimension order is required
+        expected_dim_order = self.axes_order
+        # Current dimension order of the variable
+        current_dim_order = self.variable.dimensions
+        # Permutation prescription
+        permutation_formula = [current_dim_order.index(dim)
+                               for dim in expected_dim_order]
+        permutation_formula_back = [expected_dim_order.index(dim) for dim in
+                                    current_dim_order]
+
+        # Prepare the indices values
+        dimension_sizes = []
+        squeeze_axis = []
+        for i, idx in enumerate(indices):
+            if isinstance(idx, int):
+                dimension_sizes.append(slice(idx, idx + 1, 1))
+                squeeze_axis.append(i)
+            elif isinstance(idx, slice):
+                start = idx.start
+                end = idx.stop
+                step = idx.step
+                if start is None:
+                    start = 0
+                if start < 0:
+                    start += self.lengths[permutation_formula[i]]
+                if end is None:
+                    end = self.lengths[permutation_formula[i]]
+                if end < 0:
+                    end += self.lengths[permutation_formula[i]]
+                if step is None:
+                    step = 1
+                if step < 0:
+                    step += self.lengths[permutation_formula[i]]
+                dimension_sizes.append(slice(start, end, step))
+            else:
+                raise AttributeError("Incorrect index type!")
+
+        # Does the permutation
+        file_index = tuple(
+            dimension_sizes[i] for i in permutation_formula_back)
+        # Get the value
+        values = np.expand_dims(value, (tuple(squeeze_axis)))
+        # Swap dimensions:
+        values = values.transpose(tuple(permutation_formula_back))
+        # Return the value in expected logic
+        self.variable[file_index] = values
+
 
 class NetCDF4Streamer(netCDF4.Dataset):
-    """Extension of the native NetCDF4 driver. Allows to create the variable
-        for streaming of data in some reasonable chunk size.
+    """Extension of the native NetCDF4 driver. Allows to A) create the variable
+        for streaming of data in some reasonable chunk size; B) create variable
+        from that user can read data (or write data into it) without takeing
+        dimension order into an account.
 
     Usage:
         To create the file write:
@@ -276,6 +424,12 @@ class NetCDF4Streamer(netCDF4.Dataset):
             chunk of size 3 MB):
             >>> fh.openStreamerVariable("var",  chunk_dimension="d1",
             >>>                         chunk_size_mb=3)
+        To read (or similary write) from variable without reflecting its
+        dimension order (say that some_variable has dimensions d1, d2, d3):
+            >>> variable = fh.openStreamerVariable('some_variable')
+            >>> variable.axes_order = ('d3', 'd2', 'd1')  # Preferable order
+            >>> variable[1, :, 5] = data  # Stream data in the required order
+
     """
 
     def createStreamerVariable(self,
@@ -292,9 +446,26 @@ class NetCDF4Streamer(netCDF4.Dataset):
                                least_significant_digit=None,
                                fill_value=None,
                                *,
-                               chunk_dimension: str,
+                               chunk_dimension: str = None,
                                chunk_size_mb: float = 512) \
             -> NetCDF4StreamerVariable:
+        """Create the variable as a NetCDF4StreamerVariable object.
+            Most of the parameters follows the logic defined in the native
+            NetCDF4 driver (netCDF4 package in Python).
+
+        Args:
+            varname (str): name of the variable to be open. Required!
+            chunk_dimension (Optional[str]): define dimension by that data are
+                streamed to the variable, if None the first dimension
+                is chosen. Default value is None.
+            chunk_size_mb (float): Size of the memory chunk to that data
+                are streamed first (before they are streamed to the variable
+                on the disk). Unit is megabyte. Default size is 512 MB.
+        Returns:
+            NetCDF4StreamerVariable: The NetCDF4StreamerVariable for
+                streaming to/from the variable or reading/writing in
+                dimension order relaxed way.
+        """
 
         variable = self.createVariable(varname,
                                        datatype,
@@ -314,6 +485,11 @@ class NetCDF4Streamer(netCDF4.Dataset):
         for dim in dimensions:
             dim_lengths.append(self.dimensions[dim].size)
 
+        if chunk_dimension is None:
+            # If the chunk_dimension argument is None, use the first
+            #   dimension to streaming by.
+            chunk_dimension = self[varname].dimensions[0]
+
         # Return the variable streamer object:
         return NetCDF4StreamerVariable(var=variable,
                                        lengths=tuple(dim_lengths),
@@ -321,11 +497,27 @@ class NetCDF4Streamer(netCDF4.Dataset):
                                        chunk_size_mb=chunk_size_mb,
                                        write_mode=True)
 
-    def openStreamerVariable(self,
-                             varname: str,
-                             *,
-                             chunk_dimension: str,
-                             chunk_size_mb: float = 512):
+    def openStreamerVariable(
+            self,
+            varname: str,
+            *,
+            chunk_dimension: Optional[str] = None,
+            chunk_size_mb: float = 512) -> NetCDF4StreamerVariable:
+        """Open the variable as a NetCDF4StreamerVariable object.
+
+        Args:
+            varname (str): name of the variable to be open. Required!
+            chunk_dimension (Optional[str]): define dimension by that data are
+                streamed to the variable, if None the first dimension
+                is chosen. Default value is None.
+            chunk_size_mb (float): Size of the memory chunk to that data
+                are streamed first (before they are streamed to the variable
+                on the disk). Unit is megabyte. Default size is 512 MB.
+        Returns:
+            NetCDF4StreamerVariable: The NetCDF4StreamerVariable for
+                streaming to/from the variable or reading/writing in
+                dimension order relaxed way.
+        """
         # Select the variable
         variable = self[varname]
 
@@ -333,6 +525,11 @@ class NetCDF4Streamer(netCDF4.Dataset):
         dim_lengths = []
         for dim in variable.dimensions:
             dim_lengths.append(self.dimensions[dim].size)
+
+        if chunk_dimension is None:
+            # If the chunk_dimension argument is None, use the first
+            #   dimension to streaming by.
+            chunk_dimension = self[varname].dimensions[0]
 
         # Return the variable streamer object:
         return NetCDF4StreamerVariable(var=variable,

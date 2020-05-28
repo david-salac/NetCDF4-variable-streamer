@@ -4,7 +4,7 @@ import os
 import numpy as np
 import netCDF4
 
-from netCDF4_streamer import NetCDF4Streamer, NetCDF4StreamerVariable
+from netCDF4_enhancement import NetCDF4Streamer, NetCDF4StreamerVariable
 
 
 class TestNetCDF4Streamer(unittest.TestCase):
@@ -260,12 +260,161 @@ class TestNetCDF4StreamerYieldingValuesSet(TestNetCDF4StreamerYielding):
                 idx_end += chunk_size
             self.assertTrue(
                 np.allclose(
-                    np.moveaxis(self.values[:, idx_start:idx_end, :],
-                                [0, 1, 2], [1, 2, 0]),
+                    self.values[:, idx_start:idx_end, :].transpose((2, 0, 1)),
                     set_values
                 )
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestReadingWritingDimensionOrderFree(unittest.TestCase):
+    def setUp(self) -> None:
+        """Set-up the NetCDF4 variable for reading"""
+        # Create a file:
+        self.output_dir = tempfile.mkdtemp()
+        file_pointer = netCDF4.Dataset(
+            os.path.join(self.output_dir, "testRead.nc"),
+            "w"
+        )
+
+        # Create dimensions
+        self.shape = (5, 6, 7, 8)
+        self.dims = ("d1", "d2", "d3", 'd4')
+        for i in range(len(self.shape)):
+            file_pointer.createDimension(self.dims[i], self.shape[i])
+        self.value = np.random.random(self.shape) * 100
+
+        # Create variable
+        file_pointer.createVariable(
+            "test", "f8", self.dims
+        )
+        file_pointer['test'][:] = self.value
+        file_pointer.close()
+
+        # Open a testing file for reading
+        self.nc = NetCDF4Streamer(
+            os.path.join(self.output_dir, "testRead.nc"),
+            "a"
+        )
+        self.var = self.nc.openStreamerVariable("test")
+
+    def _get_val_at(self, d1: int, d2: int, d3: int, d4: int):
+        return self.value[d1, d2, d3, d4]
+
+    def tearDown(self) -> None:
+        """Delete created variable."""
+        os.remove(os.path.join(self.output_dir, "testRead.nc"))
+
+    def test_read(self):
+        """Test the reading."""
+        # A) Fill variable with values
+        axes_order = [self.dims[1], self.dims[3],
+                      self.dims[2], self.dims[0]]
+        expected = self.value.transpose((1, 3, 2, 0))
+        self.var.axes_order = axes_order
+
+        for d2 in range(self.shape[1]):
+            computed = self.var[d2, :, :, :]
+            exp_val = expected[d2, :, :, :]
+            self.assertTupleEqual(computed.shape, exp_val.shape)
+            self.assertTrue(np.allclose(exp_val, computed))
+
+        # B) Fill variable with values
+        axes_order = [self.dims[1], self.dims[3],
+                      self.dims[2], self.dims[0]]
+        expected = self.value.transpose((1, 3, 2, 0))
+        self.var.axes_order = axes_order
+
+        for d3 in range(self.shape[2]):
+            computed = self.var[:, :, d3, :]
+            exp_val = expected[:, :, d3, :]
+            self.assertTupleEqual(computed.shape, exp_val.shape)
+            self.assertTrue(np.allclose(exp_val, computed))
+
+        # C) Fill variable with values
+        axes_order = [self.dims[2], self.dims[3],
+                      self.dims[1], self.dims[0]]
+        expected = self.value.transpose((2, 3, 1, 0))
+        self.var.axes_order = axes_order
+
+        for d1 in range(self.shape[0]):
+            for d3 in range(self.shape[2]):
+                computed = self.var[d3, :, d1, :]
+                exp_val = expected[d3, :, d1, :]
+                self.assertTupleEqual(computed.shape, exp_val.shape)
+                self.assertTrue(np.allclose(exp_val, computed))
+
+        # D) Fill variable with values
+        axes_order = [self.dims[2], self.dims[3],
+                      self.dims[1], self.dims[0]]
+        expected = self.value.transpose((2, 3, 1, 0))
+        self.var.axes_order = axes_order
+
+        for d1 in range(self.shape[0]):
+            for d3 in range(self.shape[2]):
+                computed = self.var[:, :, :, :]
+                exp_val = expected[:, :, :, :]
+                self.assertTupleEqual(computed.shape, exp_val.shape)
+                self.assertTrue(np.allclose(exp_val, computed))
+
+        # E) Test single value
+        axes_order = [self.dims[2], self.dims[3],
+                      self.dims[1], self.dims[0]]
+        expected = self.value.transpose((2, 3, 1, 0))
+        self.var.axes_order = axes_order
+        self.assertAlmostEqual(self.var[1, 1, 2, 1], expected[1, 1, 2, 1])
+        self.assertTrue(isinstance(self.var[1, 1, 2, 1], float))
+
+    def test_write(self):
+        """Test the writing."""
+        # A) Fill variable with single values
+        axes_order = [self.dims[1], self.dims[3],
+                      self.dims[2], self.dims[0]]
+        self.var.axes_order = axes_order
+        self.var[1, 2, 3, 4] = 3
+        self.assertEqual(self.var.variable[4, 1, 3, 2], 3)
+        self.assertEqual(self.var[1, 2, 3, 4], 3)
+        self.var[3, 1, 5, 0] = 3
+        self.assertEqual(self.var.variable[4, 1, 3, 2], 3)
+        self.assertEqual(self.var[1, 2, 3, 4], 3)
+
+        # B) Fill variable with values
+        axes_order = [self.dims[1], self.dims[3],
+                      self.dims[2], self.dims[0]]
+        expected = (np.random.random(self.shape) * 100).transpose((1, 3, 2, 0))
+        self.var.axes_order = axes_order
+
+        for d3 in range(self.shape[2]):
+            exp_val = expected[:, :, d3, :]
+            self.var[:, :, d3, :] = exp_val
+            computed = self.var[:, :, d3, :]
+
+            self.assertTupleEqual(computed.shape, exp_val.shape)
+            self.assertTrue(np.allclose(exp_val, computed))
+
+        # C) Fill variable with values
+        axes_order = [self.dims[2], self.dims[3],
+                      self.dims[1], self.dims[0]]
+        expected = (np.random.random(self.shape) * 100).transpose((2, 3, 1, 0))
+        self.var.axes_order = axes_order
+
+        for d1 in range(self.shape[0]):
+            for d3 in range(self.shape[2]):
+                exp_val = expected[d3, :, d1, :]
+                self.var[d3, :, d1, :] = exp_val
+                computed = self.var[d3, :, d1, :]
+                self.assertTupleEqual(computed.shape, exp_val.shape)
+                self.assertTrue(np.allclose(exp_val, computed))
+
+        # D) Fill variable with values
+        axes_order = [self.dims[2], self.dims[3],
+                      self.dims[1], self.dims[0]]
+        expected = (np.random.random(self.shape) * 100).transpose((2, 3, 1, 0))
+        self.var.axes_order = axes_order
+
+        for d1 in range(self.shape[0]):
+            for d3 in range(self.shape[2]):
+                exp_val = expected[:, :, :, :]
+                self.var[:, :, :, :] = exp_val
+                computed = self.var[:, :, :, :]
+                self.assertTupleEqual(computed.shape, exp_val.shape)
+                self.assertTrue(np.allclose(exp_val, computed))
