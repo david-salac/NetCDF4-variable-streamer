@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, Dict
 
 import netCDF4
 import numpy as np
@@ -68,6 +68,8 @@ class NetCDF4StreamerVariable(object):
             chunk_shape = list(lengths)
             chunk_shape[self.pos] = self.chunk_size
             self._chunk = np.empty(tuple(chunk_shape))
+
+        self.axes_order = self.variable.dimensions
 
     def streamNumpyData(self,
                         data: np.ndarray,
@@ -358,6 +360,66 @@ class NetCDF4StreamerVariable(object):
         # Return the value in expected logic
         return values
 
+    @property
+    def attributes(self) -> Dict[str, object]:
+        """Return the dictionary with attribute name as a key and value as
+            the dictionary value.
+
+        Returns:
+            Dict[str, ...]: dictionary with attribute name as a key and value
+                as the dictionary value.
+
+        TODO:
+            - document changes in README.md
+        """
+        atr: Dict[str, object] = {}
+        for attr in self.variable.ncattrs():
+            atr[attr] = getattr(self.netcdf4_variable, attr)
+        return atr
+
+    @property
+    def name(self) -> str:
+        """Return the name of the NetCDF4 variable.
+
+        Returns:
+            str: name of variable.
+
+        TODO:
+            - document changes in README.md
+        """
+        return self.netcdf4_variable.name
+
+    def to_dict(self, *, skip_coords: bool=False) -> dict:
+        """Export variable content to dictionary.
+
+        Args:
+            skip_coords (bool): If true, the 'coord' key is skipped.
+
+        Returns:
+            dict: xarray style dictionary.
+
+        TODO:
+            - add coords key to the dict
+            - document changes in README.md
+        """
+        export: dict = {}
+
+        # 1) Get the variable attributes
+        export['attrs'] = self.attributes
+
+        # 2) Get variable dimensions
+        export['dims'] = self.dimensions
+
+        # 3) Get variable name
+        export['name'] = self.name
+
+        # 4) Get the data:
+        export['data'] = self[:].tolist()
+
+        return export
+
+    # TODO: Process time series (check import pandas!) and LABELS
+
     def __getitem__(self, indices) -> Union[float, np.ndarray]:
         """Get the item on the position defined by argument indices.
             Reflects the order of axis in axes_order property.
@@ -373,6 +435,17 @@ class NetCDF4StreamerVariable(object):
         Returns:
             Union[float, np.ndarray]: value at position defined by indices.
         """
+        # Sort out the case of 1D
+        try:
+            len(indices)
+        except TypeError:
+            indices = [indices]
+        # Sort out the case when a [:] is selected
+        if (len(indices) == 1 and
+                indices[0] == slice(None) and
+                len(self.dimensions) > 1):
+            indices = [slice(None) for _ in range(len(self.dimensions))]
+
         return self.sel(*indices)
 
     def __setitem__(self, indices, value: Union[float, np.ndarray]):
@@ -384,6 +457,17 @@ class NetCDF4StreamerVariable(object):
             indices (tuple): the position of the item (or slice).
             value (np.ndarray): new value to be set.
         """
+        # Sort out the case of 1D
+        try:
+            len(indices)
+        except TypeError:
+            indices = [indices]
+        # Sort out the case when a [:] is selected
+        if (len(indices) == 1 and
+                indices[0] == slice(None) and
+                len(self.dimensions) > 1):
+            indices = [slice(None) for _ in range(len(self.dimensions))]
+
         # What dimension order is required
         expected_dim_order = self.axes_order
         # Current dimension order of the variable
